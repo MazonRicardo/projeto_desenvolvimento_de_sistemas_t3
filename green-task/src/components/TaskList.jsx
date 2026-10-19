@@ -7,7 +7,6 @@ export default function TaskList({ user }) {
   const [setores, setSetores] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Formulário
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('media')
@@ -15,47 +14,44 @@ export default function TaskList({ user }) {
   const [assignedTo, setAssignedTo] = useState('')
   const [setorId, setSetorId] = useState('')
   const [showForm, setShowForm] = useState(false)
-
-  // Filtro
   const [filtroSetor, setFiltroSetor] = useState('')
 
   const isOwner = user?.email === 'ricardo.mazon@escola.pr.gov.br' ||
                   user?.user_metadata?.role === 'proprietario'
 
-  // Buscar dados
   const fetchData = async () => {
     setLoading(true)
 
-    // Buscar tarefas
-    let query = supabase.from('tasks').select('*, setores(nome)')
+    try {
+      let query = supabase.from('tasks').select('*')
 
-    if (isOwner) {
-      query = query.eq('user_id', user.id)
-    } else {
-      query = query.eq('assigned_to', user.email)
-    }
+      if (isOwner) {
+        query = query.eq('user_id', user.id)
+      } else {
+        query = query.eq('assigned_to', user.email)
+      }
 
-    if (filtroSetor) {
-      query = query.eq('setor_id', filtroSetor)
-    }
+      if (filtroSetor) {
+        query = query.eq('setor_id', filtroSetor)
+      }
 
-    const { data: tasksData } = await query.order('created_at', { ascending: false })
-    setTasks(tasksData || [])
+      const { data: tasksData, error: tasksError } = await query.order('created_at', { ascending: false })
 
-    // Buscar funcionários e setores (só precisa pro proprietário)
-    if (isOwner) {
-      const { data: funcData } = await supabase
-        .from('funcionarios')
-        .select('*')
-        .order('nome')
+      if (tasksError) {
+        console.error('Erro ao buscar tarefas:', tasksError.message)
+        setTasks([])
+      } else {
+        setTasks(tasksData || [])
+      }
 
-      const { data: setoresData } = await supabase
-        .from('setores')
-        .select('*')
-        .order('nome')
-
-      setFuncionarios(funcData || [])
-      setSetores(setoresData || [])
+      if (isOwner) {
+        const { data: funcData } = await supabase.from('funcionarios').select('*').order('nome')
+        const { data: setoresData } = await supabase.from('setores').select('*').order('nome')
+        setFuncionarios(funcData || [])
+        setSetores(setoresData || [])
+      }
+    } catch (err) {
+      console.error('Erro geral:', err)
     }
 
     setLoading(false)
@@ -65,7 +61,6 @@ export default function TaskList({ user }) {
     fetchData()
   }, [user, filtroSetor])
 
-  // Criar tarefa
   const handleCreateTask = async (e) => {
     e.preventDefault()
     if (!title.trim()) return
@@ -96,31 +91,16 @@ export default function TaskList({ user }) {
   }
 
   const changeStatus = async (id, newStatus) => {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ status: newStatus })
-      .eq('id', id)
-
-    if (error) {
-      alert('Erro ao atualizar status: ' + error.message)
-    } else {
-      fetchData()
-    }
+    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', id)
+    if (error) alert('Erro ao atualizar status: ' + error.message)
+    else fetchData()
   }
 
   const deleteTask = async (id) => {
     if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return
-
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      alert('Erro ao excluir: ' + error.message)
-    } else {
-      fetchData()
-    }
+    const { error } = await supabase.from('tasks').delete().eq('id', id)
+    if (error) alert('Erro ao excluir: ' + error.message)
+    else fetchData()
   }
 
   const getStatusColor = (status) => {
@@ -137,9 +117,13 @@ export default function TaskList({ user }) {
     return '#999'
   }
 
+  const getNomeSetor = (setorId) => {
+    const setor = setores.find(s => s.id === Number(setorId) || s.id === setorId)
+    return setor ? setor.nome : null
+  }
+
   return (
     <div>
-      {/* Cabeçalho */}
       <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ color: '#2e7d32', margin: 0 }}>
@@ -151,17 +135,11 @@ export default function TaskList({ user }) {
         </div>
 
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {/* Filtro por setor */}
           {isOwner && setores.length > 0 && (
             <select
               value={filtroSetor}
               onChange={(e) => setFiltroSetor(e.target.value)}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                border: '1px solid #ddd',
-                fontSize: '14px'
-              }}
+              style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px' }}
             >
               <option value="">Todos os setores</option>
               {setores.map((s) => (
@@ -174,13 +152,8 @@ export default function TaskList({ user }) {
             <button
               onClick={() => setShowForm(!showForm)}
               style={{
-                background: '#2e7d32',
-                color: 'white',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: '600'
+                background: '#2e7d32', color: 'white', border: 'none',
+                padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
               }}
             >
               {showForm ? 'Cancelar' : '+ Nova Tarefa'}
@@ -189,22 +162,15 @@ export default function TaskList({ user }) {
         </div>
       </div>
 
-      {/* Formulário de criar tarefa */}
       {isOwner && showForm && (
         <form onSubmit={handleCreateTask} style={{
-          background: 'white',
-          padding: '24px',
-          borderRadius: '12px',
-          marginBottom: '24px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
+          background: 'white', padding: '24px', borderRadius: '12px',
+          marginBottom: '24px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
         }}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Título *</label>
             <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
+              type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
               style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
               placeholder="Ex: Revisar relatório"
             />
@@ -213,38 +179,30 @@ export default function TaskList({ user }) {
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Descrição</label>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows="3"
+              value={description} onChange={(e) => setDescription(e.target.value)} rows="3"
               style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box', resize: 'vertical' }}
               placeholder="Detalhes da tarefa..."
             />
           </div>
 
           <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            {/* Responsável - lista de colaboradores */}
             <div style={{ flex: 1, minWidth: '200px' }}>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Responsável</label>
               <select
-                value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
+                value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
               >
                 <option value="">Selecione o colaborador</option>
                 {funcionarios.map((f) => (
-                  <option key={f.id} value={f.email}>
-                    {f.nome} ({f.email})
-                  </option>
+                  <option key={f.id} value={f.email}>{f.nome} ({f.email})</option>
                 ))}
               </select>
             </div>
 
-            {/* Setor */}
             <div style={{ flex: 1, minWidth: '180px' }}>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Setor</label>
               <select
-                value={setorId}
-                onChange={(e) => setSetorId(e.target.value)}
+                value={setorId} onChange={(e) => setSetorId(e.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
               >
                 <option value="">Selecione o setor</option>
@@ -259,8 +217,7 @@ export default function TaskList({ user }) {
             <div style={{ flex: 1, minWidth: '150px' }}>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Prioridade</label>
               <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
+                value={priority} onChange={(e) => setPriority(e.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
               >
                 <option value="baixa">Baixa</option>
@@ -272,42 +229,27 @@ export default function TaskList({ user }) {
             <div style={{ flex: 1, minWidth: '150px' }}>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Prazo</label>
               <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
               />
             </div>
           </div>
 
-          <button
-            type="submit"
-            style={{
-              background: '#2e7d32',
-              color: 'white',
-              border: 'none',
-              padding: '12px 24px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '600'
-            }}
-          >
+          <button type="submit" style={{
+            background: '#2e7d32', color: 'white', border: 'none',
+            padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
+          }}>
             Criar Tarefa
           </button>
         </form>
       )}
 
-      {/* Lista de tarefas */}
       {loading ? (
         <p style={{ color: '#666' }}>Carregando tarefas...</p>
       ) : tasks.length === 0 ? (
         <div style={{
-          background: 'white',
-          padding: '40px',
-          borderRadius: '12px',
-          textAlign: 'center',
-          color: '#666',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
+          background: 'white', padding: '40px', borderRadius: '12px',
+          textAlign: 'center', color: '#666', boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
         }}>
           {isOwner ? 'Nenhuma tarefa encontrada.' : 'Nenhuma tarefa atribuída a você.'}
         </div>
@@ -316,33 +258,32 @@ export default function TaskList({ user }) {
           {tasks.map((task) => (
             <div key={task.id} style={{
               background: 'white',
-              padding: '20px',
+              padding: '20px 22px',
               borderRadius: '12px',
               boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
               borderLeft: `6px solid ${getStatusColor(task.status)}`
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                <h3 style={{ margin: 0, color: '#333' }}>{task.title}</h3>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {task.setores?.nome && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                alignItems: 'flex-start', gap: '12px', marginBottom: '10px'
+              }}>
+                <h3 style={{ margin: 0, color: '#222', fontSize: '17px', fontWeight: '600', lineHeight: '1.3' }}>
+                  {task.title}
+                </h3>
+                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                  {getNomeSetor(task.setor_id) && (
                     <span style={{
-                      background: '#e8f5e9',
-                      color: '#2e7d32',
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: '600'
+                      background: '#e8f5e9', color: '#2e7d32',
+                      padding: '4px 10px', borderRadius: '20px',
+                      fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap'
                     }}>
-                      {task.setores.nome}
+                      {getNomeSetor(task.setor_id)}
                     </span>
                   )}
                   <span style={{
-                    background: getPriorityColor(task.priority),
-                    color: 'white',
-                    padding: '4px 10px',
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    fontWeight: '600'
+                    background: getPriorityColor(task.priority), color: 'white',
+                    padding: '4px 10px', borderRadius: '20px',
+                    fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap'
                   }}>
                     {task.priority}
                   </span>
@@ -350,49 +291,76 @@ export default function TaskList({ user }) {
               </div>
 
               {task.description && (
-                <p style={{ color: '#666', margin: '8px 0', fontSize: '14px' }}>{task.description}</p>
-              )}
-
-              {task.assigned_to && (
-                <p style={{ color: '#555', margin: '4px 0', fontSize: '13px' }}>
-                  <strong>Responsável:</strong> {task.assigned_to}
+                <p style={{ color: '#555', margin: '0 0 12px 0', fontSize: '14px', lineHeight: '1.5', textAlign: 'left' }}>
+                  {task.description}
                 </p>
               )}
 
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px', flexWrap: 'wrap' }}>
-                <select
-                  value={task.status}
-                  onChange={(e) => changeStatus(task.id, e.target.value)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid #ddd',
-                    fontSize: '13px'
-                  }}
-                >
-                  <option value="pendente">Pendente</option>
-                  <option value="em_andamento">Em andamento</option>
-                  <option value="concluida">Concluída</option>
-                </select>
-
-                {task.due_date && (
-                  <span style={{ fontSize: '13px', color: '#666' }}>
-                    Prazo: {new Date(task.due_date).toLocaleDateString('pt-BR')}
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: '16px',
+                marginBottom: '14px', fontSize: '13px', color: '#666'
+              }}>
+                {task.assigned_to && (
+                  <span>
+                    <strong style={{ color: '#444' }}>Responsável:</strong> {task.assigned_to}
                   </span>
                 )}
+                {task.due_date && (
+                  <span>
+                    <strong style={{ color: '#444' }}>Prazo:</strong>{' '}
+                    {new Date(task.due_date).toLocaleDateString('pt-BR')}
+                  </span>
+                )}
+              </div>
+
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: '12px', paddingTop: '12px', borderTop: '1px solid #f0f0f0'
+              }}>
+                <select
+  value={task.status}
+  onChange={(e) => changeStatus(task.id, e.target.value)}
+  style={{
+    padding: '7px 12px',
+    borderRadius: '6px',
+    border: '1px solid #ddd',
+    fontSize: '13px',
+    backgroundColor: '#ffffff',
+    color: '#222222',
+    WebkitTextFillColor: '#222222',
+    opacity: 1,
+    cursor: 'pointer',
+    colorScheme: 'light'
+  }}
+>
+  <option
+    value="pendente"
+    style={{ color: '#222222', backgroundColor: '#ffffff' }}
+  >
+    Pendente
+  </option>
+
+  <option
+    value="em_andamento"
+    style={{ color: '#222222', backgroundColor: '#ffffff' }}
+  >
+    Em andamento
+  </option>
+
+  <option
+    value="concluida"
+    style={{ color: '#222222', backgroundColor: '#ffffff' }}
+  >
+    Concluída
+  </option>
+</select>
 
                 {isOwner && (
                   <button
                     onClick={() => deleteTask(task.id)}
                     style={{
-                      marginLeft: 'auto',
-                      background: '#ffebee',
-                      color: '#c62828',
-                      border: 'none',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '13px'
+                      background: '#ffebee', color: '#c62828', border: 'none',
+                      padding: '7px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px'
                     }}
                   >
                     Excluir
