@@ -160,7 +160,7 @@
 .landing-nav-actions {
   justify-self: end;
   display: flex;
-  align-items: center;
+  align-items: right;
   gap: 14px;
 }
 
