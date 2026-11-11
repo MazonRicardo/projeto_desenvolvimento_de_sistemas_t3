@@ -1,3 +1,4 @@
+
 import './LandingPage.css'
 
 export default function LandingPage({ onGoToLogin, theme, onToggleTheme }) {
@@ -15,18 +16,7 @@ export default function LandingPage({ onGoToLogin, theme, onToggleTheme }) {
           <span className="landing-brand-title">GreenTask</span>
         </div>
 
-        {/* Botões de Navegação Centralizados
-        <nav className="landing-nav-center">
-          <a href="#inicio" className="landing-nav-btn active">
-            <span>Início</span>
-          </a>
-          <a href="#recursos" className="landing-nav-btn">
-            <span>Recursos</span>
-          </a>
-          <a href="#sustentabilidade" className="landing-nav-btn">
-            <span>Sustentabilidade</span>
-          </a>
-        </nav> */}
+        {/* Menu central removido */}
 
         <div className="landing-nav-actions">
           {onToggleTheme && (
