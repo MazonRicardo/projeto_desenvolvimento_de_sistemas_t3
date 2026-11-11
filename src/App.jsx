@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import Login from './components/Login'
@@ -6,6 +5,7 @@ import LandingPage from './components/LandingPage'
 import TaskList from './components/TaskList'
 import CadastrarFuncionario from './components/CadastrarFuncionario'
 import GerenciarSetores from './components/GerenciarSetores'
+import './AppHeader.css'
 import './App.css'
 
 function App() {
@@ -34,43 +34,41 @@ function App() {
     setTheme(prev => prev === 'light' ? 'dark' : 'light')
   }
 
- 
-useEffect(() => {
-  let mounted = true
+  useEffect(() => {
+    let mounted = true
 
-  const initializeAuth = async () => {
-    const { data, error } = await supabase.auth.getSession()
+    const initializeAuth = async () => {
+      const { data, error } = await supabase.auth.getSession()
 
-    if (!mounted) return
+      if (!mounted) return
 
-    if (error) {
-      console.error('Erro ao recuperar sessão:', error)
-      setUser(null)
+      if (error) {
+        console.error('Erro ao recuperar sessão:', error)
+        setUser(null)
+        setLoading(false)
+        return
+      }
+
+      setUser(data.session?.user ?? null)
       setLoading(false)
-      return
     }
 
-    setUser(data.session?.user ?? null)
-    setLoading(false)
-  }
+    initializeAuth()
 
-  initializeAuth()
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return
 
-  const {
-    data: { subscription }
-  } = supabase.auth.onAuthStateChange((event, session) => {
-    if (!mounted) return
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
 
-    setUser(session?.user ?? null)
-    setLoading(false)
-  })
-
-  return () => {
-    mounted = false
-    subscription.unsubscribe()
-  }
-}, [])
-
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const handleLogout = async () => {
     setLoggingOut(true)
