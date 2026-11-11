@@ -330,6 +330,18 @@
   to { transform: rotate(360deg); }
 }
 
+/* ==========================================================================
+   Main Content Area
+   ========================================================================== */
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+  box-sizing: border-box;
+}
+
 /* Evita quebra de linha / espremer botões do header */
 .app-nav-btn,
 .theme-toggle-btn,
@@ -342,13 +354,31 @@
   white-space: nowrap;
 }
 
+/* Isola o botão de tema do header (LandingPage.css tem regra global que o vira círculo no mobile) */
+.app-header .theme-toggle-btn {
+  width: auto;
+  height: auto;
+  padding: 8px 14px;
+  gap: 8px;
+  border-radius: var(--radius-full);
+}
+
+.app-header .theme-toggle-label {
+  display: inline;
+}
+
 @media (max-width: 900px) {
   .app-header {
+    position: relative;
+    top: 0;
     display: flex;
     flex-direction: column;
-    padding: 16px 20px;
-    gap: 14px;
+    align-items: center;
+    padding: 16px 18px;
+    gap: 12px;
     min-height: auto;
+    border-radius: 28px;
+    margin-top: 10px;
   }
   .app-brand {
     justify-self: auto;
@@ -356,12 +386,34 @@
   .app-nav-tabs {
     justify-self: auto;
     width: 100%;
-    justify-content: center;
+    max-width: 100%;
+    box-sizing: border-box;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .app-nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .app-nav-btn {
+    padding: 9px 16px;
   }
   .app-user-section {
     justify-self: auto;
     width: 100%;
     justify-content: center;
     flex-wrap: wrap;
+    gap: 8px;
+  }
+  .app-user-chip {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .app-user-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-main {
+    padding: 24px 16px 40px;
   }
 }
