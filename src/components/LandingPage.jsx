@@ -15,7 +15,7 @@ export default function LandingPage({ onGoToLogin, theme, onToggleTheme }) {
           <span className="landing-brand-title">GreenTask</span>
         </div>
 
-        {/* Botões de Navegação Centralizados */}
+        {/* Botões de Navegação Centralizados
         <nav className="landing-nav-center">
           <a href="#inicio" className="landing-nav-btn active">
             <span>Início</span>
@@ -26,7 +26,7 @@ export default function LandingPage({ onGoToLogin, theme, onToggleTheme }) {
           <a href="#sustentabilidade" className="landing-nav-btn">
             <span>Sustentabilidade</span>
           </a>
-        </nav>
+        </nav> */}
 
         <div className="landing-nav-actions">
           {onToggleTheme && (
