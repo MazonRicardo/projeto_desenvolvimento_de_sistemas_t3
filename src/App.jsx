@@ -8,6 +8,9 @@ import GerenciarSetores from './components/GerenciarSetores'
 import './AppHeader.css'
 import './App.css'
 
+const FUNC_SESSION_KEY = 'greentask_funcionario_session'
+const FUNC_SESSION_DAYS = 7
+
 function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -34,6 +37,54 @@ function App() {
     setTheme(prev => prev === 'light' ? 'dark' : 'light')
   }
 
+  // Login de funcionário (tabela "funcionarios") não passa pelo Supabase Auth,
+  // então a gente guarda a sessão dele na mão.
+  const handleLogin = (loggedUser) => {
+    if (loggedUser?.isFuncionario) {
+      localStorage.setItem(
+        FUNC_SESSION_KEY,
+        JSON.stringify({ user: loggedUser, savedAt: Date.now() })
+      )
+    }
+    setUser(loggedUser)
+  }
+
+  const restoreFuncionarioSession = async () => {
+    try {
+      const raw = localStorage.getItem(FUNC_SESSION_KEY)
+      if (!raw) return null
+
+      const saved = JSON.parse(raw)
+      const maxAge = FUNC_SESSION_DAYS * 24 * 60 * 60 * 1000
+
+      if (!saved?.user?.id || Date.now() - saved.savedAt > maxAge) {
+        localStorage.removeItem(FUNC_SESSION_KEY)
+        return null
+      }
+
+      // confirma que o funcionário ainda existe (se foi excluído, perde o acesso)
+      const { data, error } = await supabase
+        .from('funcionarios')
+        .select('id, email, nome')
+        .eq('id', saved.user.id)
+        .maybeSingle()
+
+      if (error || !data) {
+        localStorage.removeItem(FUNC_SESSION_KEY)
+        return null
+      }
+
+      return {
+        ...saved.user,
+        email: data.email,
+        user_metadata: { ...saved.user.user_metadata, nome: data.nome }
+      }
+    } catch {
+      localStorage.removeItem(FUNC_SESSION_KEY)
+      return null
+    }
+  }
+
   useEffect(() => {
     let mounted = true
 
@@ -44,12 +95,20 @@ function App() {
 
       if (error) {
         console.error('Erro ao recuperar sessão:', error)
-        setUser(null)
+      }
+
+      if (data?.session?.user) {
+        setUser(data.session.user)
         setLoading(false)
         return
       }
 
-      setUser(data.session?.user ?? null)
+      // sem sessão do Supabase Auth -> tenta a sessão de funcionário
+      const funcionario = await restoreFuncionarioSession()
+
+      if (!mounted) return
+
+      setUser(funcionario)
       setLoading(false)
     }
 
@@ -60,8 +119,12 @@ function App() {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return
 
-      setUser(session?.user ?? null)
-      setLoading(false)
+      if (session?.user) {
+        setUser(session.user)
+      } else {
+        // não derruba o funcionário quando o Supabase Auth avisa "sem sessão"
+        setUser(prev => (prev?.isFuncionario ? prev : null))
+      }
     })
 
     return () => {
@@ -73,15 +136,19 @@ function App() {
   const handleLogout = async () => {
     setLoggingOut(true)
 
-    const { error } = await supabase.auth.signOut()
+    if (user?.isFuncionario) {
+      localStorage.removeItem(FUNC_SESSION_KEY)
+    } else {
+      const { error } = await supabase.auth.signOut()
 
-    setLoggingOut(false)
-
-    if (error) {
-      alert('Não foi possível sair: ' + error.message)
-      return
+      if (error) {
+        setLoggingOut(false)
+        alert('Não foi possível sair: ' + error.message)
+        return
+      }
     }
 
+    setLoggingOut(false)
     setShowLogoutModal(false)
     setUser(null)
     setAuthView('landing')
@@ -104,7 +171,7 @@ function App() {
   if (!user) {
     return authView === 'login' ? (
       <Login
-        onLogin={setUser}
+        onLogin={handleLogin}
         onBack={() => setAuthView('landing')}
         theme={theme}
         onToggleTheme={toggleTheme}
