@@ -34,27 +34,43 @@ function App() {
     setTheme(prev => prev === 'light' ? 'dark' : 'light')
   }
 
-  useEffect(() => {
-    let mounted = true
+ 
+useEffect(() => {
+  let mounted = true
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return
-      setUser(session?.user ?? null)
+  const initializeAuth = async () => {
+    const { data, error } = await supabase.auth.getSession()
+
+    if (!mounted) return
+
+    if (error) {
+      console.error('Erro ao recuperar sessão:', error)
+      setUser(null)
       setLoading(false)
-    })
-
-    const { data: { subscription } } =
-      supabase.auth.onAuthStateChange((_event, session) => {
-        if (mounted) {
-          setUser(session?.user ?? null)
-        }
-      })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
+      return
     }
-  }, [])
+
+    setUser(data.session?.user ?? null)
+    setLoading(false)
+  }
+
+  initializeAuth()
+
+  const {
+    data: { subscription }
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    if (!mounted) return
+
+    setUser(session?.user ?? null)
+    setLoading(false)
+  })
+
+  return () => {
+    mounted = false
+    subscription.unsubscribe()
+  }
+}, [])
+
 
   const handleLogout = async () => {
     setLoggingOut(true)
