@@ -172,3 +172,89 @@ input, button, select, textarea {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--emerald-400);
 }
+
+
+/* =========================================
+   GLOBAL DARK MODE FIXES
+========================================= */
+
+body {
+  background: var(--bg-gradient);
+  color: var(--text-main);
+}
+
+.app-layout {
+  background: var(--bg-gradient);
+  color: var(--text-main);
+}
+
+.app-main {
+  color: var(--text-main);
+}
+
+/* Superfícies */
+
+.setores-modal-card,
+.app-main form,
+.app-main > div > div {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+/* Textos */
+
+[data-theme='dark'] .app-main h1,
+[data-theme='dark'] .app-main h2,
+[data-theme='dark'] .app-main h3 {
+  color: var(--text-main);
+}
+
+[data-theme='dark'] .app-main p,
+[data-theme='dark'] .app-main label,
+[data-theme='dark'] .app-main span {
+  color: var(--text-sub);
+}
+
+/* Campos */
+
+[data-theme='dark'] input,
+[data-theme='dark'] select,
+[data-theme='dark'] textarea {
+  background: var(--input-bg);
+  color: var(--text-main);
+  border-color: var(--input-border);
+  color-scheme: dark;
+}
+
+/* Cards */
+
+[data-theme='dark'] .setor-item-card,
+[data-theme='dark'] .funcionario-item-card {
+  background: var(--m3-surface-container-high) !important;
+  border-color: var(--m3-outline-variant) !important;
+  color: var(--text-main);
+}
+
+/* Seleção */
+
+[data-theme='dark'] ::selection {
+  background: #065f46;
+  color: white;
+}
+
+/* Scrollbar */
+
+[data-theme='dark'] ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #10b981;
+}

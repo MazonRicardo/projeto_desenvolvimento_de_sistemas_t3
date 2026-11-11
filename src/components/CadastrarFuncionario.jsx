@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
@@ -5,28 +6,34 @@ export default function CadastrarFuncionario({ onClose }) {
   const [funcionarios, setFuncionarios] = useState([])
   const [loading, setLoading] = useState(true)
   const [mostrarForm, setMostrarForm] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  // Campos do formulário
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
 
-  // Edição
   const [editandoId, setEditandoId] = useState(null)
   const [editNome, setEditNome] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editSenha, setEditSenha] = useState('')
 
   const [mensagem, setMensagem] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
 
   const fetchFuncionarios = async () => {
     setLoading(true)
+
     const { data, error } = await supabase
       .from('funcionarios')
       .select('*')
       .order('nome')
 
-    if (!error) setFuncionarios(data || [])
+    if (error) {
+      setMensagem({ tipo: 'erro', texto: error.message })
+    } else {
+      setFuncionarios(data || [])
+    }
+
     setLoading(false)
   }
 
@@ -38,12 +45,22 @@ export default function CadastrarFuncionario({ onClose }) {
     e.preventDefault()
     setMensagem(null)
 
+    if (senha.length < 6) {
+      setMensagem({
+        tipo: 'erro',
+        texto: 'A senha precisa ter pelo menos 6 caracteres.'
+      })
+      return
+    }
+
+    setSaving(true)
+
     const { error } = await supabase
       .from('funcionarios')
       .insert({
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
-        senha: senha,
+        senha,
         role: 'colaborador'
       })
 
@@ -54,22 +71,35 @@ export default function CadastrarFuncionario({ onClose }) {
       setEmail('')
       setSenha('')
       setMostrarForm(false)
-      setMensagem({ tipo: 'sucesso', texto: 'Funcionário cadastrado!' })
-      fetchFuncionarios()
+
+      setMensagem({
+        tipo: 'sucesso',
+        texto: 'Funcionário cadastrado com sucesso!'
+      })
+
+      await fetchFuncionarios()
     }
+
+    setSaving(false)
   }
 
   const handleEditar = async (id) => {
     if (!editNome.trim() || !editEmail.trim()) return
+
+    setSaving(true)
 
     const dados = {
       nome: editNome.trim(),
       email: editEmail.trim().toLowerCase()
     }
 
-    // Só atualiza senha se preencheu
     if (editSenha.trim()) {
-      dados.senha = editSenha
+      setSaving(false)
+      setMensagem({
+        tipo: 'erro',
+        texto: 'A alteração de senhas deve ser feita pelo Supabase Auth, não pela tabela de funcionários.'
+      })
+      return
     }
 
     const { error } = await supabase
@@ -84,207 +114,193 @@ export default function CadastrarFuncionario({ onClose }) {
       setEditNome('')
       setEditEmail('')
       setEditSenha('')
-      setMensagem({ tipo: 'sucesso', texto: 'Funcionário atualizado!' })
-      fetchFuncionarios()
+
+      setMensagem({
+        tipo: 'sucesso',
+        texto: 'Funcionário atualizado!'
+      })
+
+      await fetchFuncionarios()
     }
+
+    setSaving(false)
   }
 
-  const handleExcluir = async (id, nomeFunc) => {
-    if (!confirm(`Excluir o funcionário "${nomeFunc}"?`)) return
+  const handleExcluir = async () => {
+    if (!confirmDelete) return
 
     const { error } = await supabase
       .from('funcionarios')
       .delete()
-      .eq('id', id)
+      .eq('id', confirmDelete.id)
 
     if (error) {
       setMensagem({ tipo: 'erro', texto: error.message })
     } else {
-      setMensagem({ tipo: 'sucesso', texto: 'Funcionário excluído!' })
-      fetchFuncionarios()
+      setMensagem({
+        tipo: 'sucesso',
+        texto: 'Funcionário excluído!'
+      })
+
+      await fetchFuncionarios()
     }
+
+    setConfirmDelete(null)
   }
 
   return (
-    <div style={{
-      background: 'white',
-      padding: '28px',
-      borderRadius: '12px',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-      maxWidth: '700px',
-      width: '100%'
-    }}>
-      {/* Cabeçalho */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2 style={{ margin: 0, color: '#2e7d32' }}>Funcionários</h2>
-        <div style={{ display: 'flex', gap: '10px' }}>
+    <div className="gt-panel management-panel">
+
+      <div className="management-header">
+        <div>
+          <span className="section-eyebrow">ADMINISTRAÇÃO</span>
+          <h2>Funcionários</h2>
+          <p>Gerencie os colaboradores da sua equipe.</p>
+        </div>
+
+        <div className="management-header-actions">
           <button
+            className="gt-primary-btn"
             onClick={() => {
               setMostrarForm(!mostrarForm)
               setMensagem(null)
             }}
-            style={{
-              background: '#2e7d32',
-              color: 'white',
-              border: 'none',
-              padding: '9px 16px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '14px'
-            }}
           >
             {mostrarForm ? 'Cancelar' : '+ Cadastrar'}
           </button>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#666' }}
-          >
-            ×
+
+          <button className="gt-icon-btn" onClick={onClose}>
+            ✕
           </button>
         </div>
       </div>
 
-      {/* Formulário de cadastro */}
+      {mensagem && (
+        <div className={`gt-message ${mensagem.tipo}`}>
+          {mensagem.tipo === 'sucesso' ? '✓' : '⚠'}
+          {mensagem.texto}
+          <button onClick={() => setMensagem(null)}>×</button>
+        </div>
+      )}
+
       {mostrarForm && (
-        <form onSubmit={handleCriar} style={{
-          background: '#f9f9f9',
-          padding: '20px',
-          borderRadius: '10px',
-          marginBottom: '24px',
-          border: '1px solid #eee'
-        }}>
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', fontSize: '14px' }}>Nome</label>
+        <form className="gt-panel employee-form" onSubmit={handleCriar}>
+          <h3>Novo funcionário</h3>
+
+          <div className="gt-field">
+            <label>Nome completo</label>
             <input
-              type="text"
+              className="gt-input"
               value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              required
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+              onChange={e => setNome(e.target.value)}
               placeholder="Ex: João Silva"
+              required
             />
           </div>
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', fontSize: '14px' }}>E-mail</label>
+
+          <div className="gt-field">
+            <label>E-mail</label>
             <input
+              className="gt-input"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+              onChange={e => setEmail(e.target.value)}
               placeholder="funcionario@escola.com"
+              required
             />
           </div>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', fontSize: '14px' }}>Senha</label>
+
+          <div className="gt-field">
+            <label>Senha inicial</label>
             <input
+              className="gt-input"
               type="password"
               value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              required
+              onChange={e => setSenha(e.target.value)}
               minLength={6}
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo de 6 caracteres"
+              required
             />
           </div>
+
           <button
-            type="submit"
-            style={{
-              background: '#2e7d32',
-              color: 'white',
-              border: 'none',
-              padding: '11px 20px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '600'
-            }}
+            className="gt-primary-btn"
+            disabled={saving}
           >
-            Cadastrar Funcionário
+            {saving ? 'Cadastrando...' : 'Cadastrar funcionário'}
           </button>
         </form>
       )}
 
-      {mensagem && (
-        <div style={{
-          background: mensagem.tipo === 'sucesso' ? '#e8f5e9' : '#ffebee',
-          color: mensagem.tipo === 'sucesso' ? '#2e7d32' : '#c62828',
-          padding: '12px',
-          borderRadius: '8px',
-          marginBottom: '16px',
-          fontSize: '14px'
-        }}>
-          {mensagem.texto}
-        </div>
-      )}
+      <div className="management-list-header">
+        <h3>Equipe cadastrada</h3>
+        <span>{funcionarios.length} colaboradores</span>
+      </div>
 
-      {/* Lista de funcionários */}
       {loading ? (
-        <p style={{ color: '#666' }}>Carregando...</p>
+        <div className="gt-loading">
+          <div className="app-loading-spinner" />
+          <p>Carregando funcionários...</p>
+        </div>
       ) : funcionarios.length === 0 ? (
-        <p style={{ color: '#666', textAlign: 'center', padding: '30px 0' }}>
-          Nenhum funcionário cadastrado ainda.
-        </p>
+        <div className="gt-empty-state">
+          <div className="gt-empty-icon">♙</div>
+          <h3>Nenhum funcionário cadastrado</h3>
+          <p>Cadastre seu primeiro colaborador para começar.</p>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {funcionarios.map((func) => (
+        <div className="management-list">
+
+          {funcionarios.map((func, index) => (
             <div
+              className="management-item"
               key={func.id}
-              style={{
-                padding: '14px 16px',
-                background: '#f9f9f9',
-                borderRadius: '8px',
-                border: '1px solid #eee'
-              }}
+              style={{ animationDelay: `${index * 40}ms` }}
             >
+
               {editandoId === func.id ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div className="employee-edit">
+
                   <input
-                    type="text"
+                    className="gt-input"
                     value={editNome}
-                    onChange={(e) => setEditNome(e.target.value)}
+                    onChange={e => setEditNome(e.target.value)}
                     placeholder="Nome"
-                    style={{ padding: '9px', borderRadius: '6px', border: '1px solid #ddd' }}
                   />
+
                   <input
+                    className="gt-input"
                     type="email"
                     value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
+                    onChange={e => setEditEmail(e.target.value)}
                     placeholder="E-mail"
-                    style={{ padding: '9px', borderRadius: '6px', border: '1px solid #ddd' }}
                   />
+
                   <input
+                    className="gt-input"
                     type="password"
                     value={editSenha}
-                    onChange={(e) => setEditSenha(e.target.value)}
-                    placeholder="Nova senha (deixe vazio para manter)"
-                    style={{ padding: '9px', borderRadius: '6px', border: '1px solid #ddd' }}
+                    onChange={e => setEditSenha(e.target.value)}
+                    placeholder="Alteração de senha não disponível aqui"
+                    disabled
                   />
-                  <div style={{ display: 'flex', gap: '8px' }}>
+
+                  <div className="management-item-actions">
                     <button
+                      className="gt-primary-btn"
+                      disabled={saving}
                       onClick={() => handleEditar(func.id)}
-                      style={{
-                        background: '#2e7d32',
-                        color: 'white',
-                        border: 'none',
-                        padding: '8px 14px',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px'
-                      }}
                     >
                       Salvar
                     </button>
+
                     <button
-                      onClick={() => setEditandoId(null)}
-                      style={{
-                        background: '#eee',
-                        color: '#333',
-                        border: 'none',
-                        padding: '8px 14px',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px'
+                      className="gt-secondary-btn"
+                      onClick={() => {
+                        setEditandoId(null)
+                        setEditNome('')
+                        setEditEmail('')
+                        setEditSenha('')
                       }}
                     >
                       Cancelar
@@ -292,52 +308,84 @@ export default function CadastrarFuncionario({ onClose }) {
                   </div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                  <div>
-                    <div style={{ fontWeight: '600', color: '#333' }}>{func.nome}</div>
-                    <div style={{ fontSize: '13px', color: '#666' }}>{func.email}</div>
+                <>
+                  <div className="management-item-info">
+                    <div className="employee-avatar">
+                      {func.nome?.charAt(0).toUpperCase() || 'U'}
+                    </div>
+
+                    <div className="employee-details">
+                      <strong>{func.nome}</strong>
+                      <span>{func.email}</span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+
+                  <div className="management-item-actions">
                     <button
+                      className="gt-secondary-btn"
                       onClick={() => {
                         setEditandoId(func.id)
                         setEditNome(func.nome)
                         setEditEmail(func.email)
                         setEditSenha('')
                       }}
-                      style={{
-                        background: '#e3f2fd',
-                        color: '#1565c0',
-                        border: 'none',
-                        padding: '7px 12px',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px'
-                      }}
                     >
                       Editar
                     </button>
+
                     <button
-                      onClick={() => handleExcluir(func.id, func.nome)}
-                      style={{
-                        background: '#ffebee',
-                        color: '#c62828',
-                        border: 'none',
-                        padding: '7px 12px',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px'
-                      }}
+                      className="gt-danger-btn"
+                      onClick={() => setConfirmDelete(func)}
                     >
                       Excluir
                     </button>
                   </div>
-                </div>
+                </>
               )}
+
             </div>
           ))}
+
         </div>
       )}
+
+      {confirmDelete && (
+        <div
+          className="modal-overlay"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="logout-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="logout-modal-icon">!</div>
+            <h2>Excluir funcionário?</h2>
+            <p>
+              Deseja realmente excluir
+              <strong> "{confirmDelete.nome}"</strong>?
+            </p>
+
+            <div className="logout-modal-actions">
+              <button
+                className="logout-cancel-btn"
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancelar
+              </button>
+
+              <button
+                className="logout-confirm-btn"
+                onClick={handleExcluir}
+              >
+                Sim, excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

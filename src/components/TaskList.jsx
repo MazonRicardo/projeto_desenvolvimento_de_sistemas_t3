@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
@@ -6,6 +7,7 @@ export default function TaskList({ user }) {
   const [funcionarios, setFuncionarios] = useState([])
   const [setores, setSetores] = useState([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -15,9 +17,20 @@ export default function TaskList({ user }) {
   const [setorId, setSetorId] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [filtroSetor, setFiltroSetor] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [message, setMessage] = useState(null)
 
-  const isOwner = user?.email === 'ricardo.mazon@escola.pr.gov.br' ||
-                  user?.user_metadata?.role === 'proprietario'
+  const isOwner =
+    user?.email === 'ricardo.mazon@escola.pr.gov.br' ||
+    user?.user_metadata?.role === 'proprietario'
+
+  const notify = (tipo, texto) => {
+    setMessage({ tipo, texto })
+    window.clearTimeout(window.messageTimer)
+    window.messageTimer = window.setTimeout(() => {
+      setMessage(null)
+    }, 3500)
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -35,50 +48,60 @@ export default function TaskList({ user }) {
         query = query.eq('setor_id', filtroSetor)
       }
 
-      const { data: tasksData, error: tasksError } = await query.order('created_at', { ascending: false })
+      const { data, error } = await query.order(
+        'created_at',
+        { ascending: false }
+      )
 
-      if (tasksError) {
-        console.error('Erro ao buscar tarefas:', tasksError.message)
-        setTasks([])
-      } else {
-        setTasks(tasksData || [])
-      }
+      if (error) throw error
+
+      setTasks(data || [])
 
       if (isOwner) {
-        const { data: funcData } = await supabase.from('funcionarios').select('*').order('nome')
-        const { data: setoresData } = await supabase.from('setores').select('*').order('nome')
-        setFuncionarios(funcData || [])
-        setSetores(setoresData || [])
-      }
-    } catch (err) {
-      console.error('Erro geral:', err)
-    }
+        const [funcResult, setorResult] = await Promise.all([
+          supabase.from('funcionarios').select('*').order('nome'),
+          supabase.from('setores').select('*').order('nome')
+        ])
 
-    setLoading(false)
+        if (funcResult.error) throw funcResult.error
+        if (setorResult.error) throw setorResult.error
+
+        setFuncionarios(funcResult.data || [])
+        setSetores(setorResult.data || [])
+      }
+    } catch (error) {
+      console.error('Erro ao carregar tarefas:', error)
+      notify('erro', 'Não foi possível carregar os dados.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
     fetchData()
-  }, [user, filtroSetor])
+  }, [user?.id, filtroSetor])
 
   const handleCreateTask = async (e) => {
     e.preventDefault()
+
     if (!title.trim()) return
 
-    const { error } = await supabase.from('tasks').insert({
-      user_id: user.id,
-      title: title.trim(),
-      description: description.trim(),
-      priority,
-      due_date: dueDate || null,
-      assigned_to: assignedTo || null,
-      setor_id: setorId || null,
-      status: 'pendente'
-    })
+    setSaving(true)
 
-    if (error) {
-      alert('Erro ao criar tarefa: ' + error.message)
-    } else {
+    try {
+      const { error } = await supabase.from('tasks').insert({
+        user_id: user.id,
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+        due_date: dueDate || null,
+        assigned_to: assignedTo || null,
+        setor_id: setorId || null,
+        status: 'pendente'
+      })
+
+      if (error) throw error
+
       setTitle('')
       setDescription('')
       setPriority('media')
@@ -86,139 +109,193 @@ export default function TaskList({ user }) {
       setAssignedTo('')
       setSetorId('')
       setShowForm(false)
-      fetchData()
+
+      notify('sucesso', 'Tarefa criada com sucesso!')
+      await fetchData()
+    } catch (error) {
+      notify('erro', error.message)
+    } finally {
+      setSaving(false)
     }
   }
 
   const changeStatus = async (id, newStatus) => {
-    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', id)
-    if (error) alert('Erro ao atualizar status: ' + error.message)
-    else fetchData()
+    const previousTasks = [...tasks]
+
+    setTasks(current =>
+      current.map(task =>
+        task.id === id ? { ...task, status: newStatus } : task
+      )
+    )
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({ status: newStatus })
+      .eq('id', id)
+
+    if (error) {
+      setTasks(previousTasks)
+      notify('erro', 'Erro ao atualizar tarefa: ' + error.message)
+    } else {
+      notify('sucesso', 'Status atualizado!')
+    }
   }
 
-  const deleteTask = async (id) => {
-    if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return
-    const { error } = await supabase.from('tasks').delete().eq('id', id)
-    if (error) alert('Erro ao excluir: ' + error.message)
-    else fetchData()
+  const deleteTask = async () => {
+    if (!confirmDelete) return
+
+    const id = confirmDelete.id
+
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      notify('erro', error.message)
+    } else {
+      setTasks(current => current.filter(task => task.id !== id))
+      notify('sucesso', 'Tarefa excluída!')
+    }
+
+    setConfirmDelete(null)
   }
 
-  const getStatusColor = (status) => {
-    if (status === 'pendente') return '#ff9800'
-    if (status === 'em_andamento') return '#2196f3'
-    if (status === 'concluida') return '#4caf50'
-    return '#999'
+  const getNomeSetor = (id) => {
+    const setor = setores.find(
+      s => String(s.id) === String(id)
+    )
+    return setor?.nome || null
   }
 
-  const getPriorityColor = (priority) => {
-    if (priority === 'alta') return '#f44336'
-    if (priority === 'media') return '#ff9800'
-    if (priority === 'baixa') return '#4caf50'
-    return '#999'
+  const statusLabel = {
+    pendente: 'Pendente',
+    em_andamento: 'Em andamento',
+    concluida: 'Concluída'
   }
 
-  const getNomeSetor = (setorId) => {
-    const setor = setores.find(s => s.id === Number(setorId) || s.id === setorId)
-    return setor ? setor.nome : null
+  const priorityLabel = {
+    alta: 'Alta',
+    media: 'Média',
+    baixa: 'Baixa'
   }
 
   return (
-    <div>
-      <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+    <div className="task-page">
+
+      <div className="task-page-header">
         <div>
-          <h2 style={{ color: '#2e7d32', margin: 0 }}>
+          <span className="section-eyebrow">GREEN TASK</span>
+          <h2 className="task-page-title">
             {isOwner ? 'Minhas Tarefas' : 'Tarefas Atribuídas'}
           </h2>
-          <p style={{ margin: '4px 0 0 0', color: '#666', fontSize: '14px' }}>
-            {isOwner ? 'Você é o Proprietário' : 'Você é Colaborador'}
+          <p className="task-page-subtitle">
+            {isOwner
+              ? 'Gerencie e acompanhe suas atividades.'
+              : 'Acompanhe as atividades atribuídas a você.'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {isOwner && setores.length > 0 && (
+        <div className="task-header-actions">
+          {isOwner && (
             <select
+              className="gt-input task-filter"
               value={filtroSetor}
-              onChange={(e) => setFiltroSetor(e.target.value)}
-              style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px' }}
+              onChange={e => setFiltroSetor(e.target.value)}
             >
               <option value="">Todos os setores</option>
-              {setores.map((s) => (
-                <option key={s.id} value={s.id}>{s.nome}</option>
+              {setores.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.nome}
+                </option>
               ))}
             </select>
           )}
 
           {isOwner && (
             <button
+              className="gt-primary-btn"
               onClick={() => setShowForm(!showForm)}
-              style={{
-                background: '#2e7d32', color: 'white', border: 'none',
-                padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
-              }}
             >
-              {showForm ? 'Cancelar' : '+ Nova Tarefa'}
+              {showForm ? 'Cancelar' : '+ Nova tarefa'}
             </button>
           )}
         </div>
       </div>
 
+      {message && (
+        <div className={`gt-message ${message.tipo}`}>
+          {message.tipo === 'sucesso' ? '✓' : '⚠'}
+          {message.texto}
+        </div>
+      )}
+
       {isOwner && showForm && (
-        <form onSubmit={handleCreateTask} style={{
-          background: 'white', padding: '24px', borderRadius: '12px',
-          marginBottom: '24px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
-        }}>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Título *</label>
+        <form className="gt-panel task-form" onSubmit={handleCreateTask}>
+          <h3>Nova tarefa</h3>
+
+          <div className="gt-field">
+            <label>Título *</label>
             <input
-              type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+              className="gt-input"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
               placeholder="Ex: Revisar relatório"
+              required
             />
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Descrição</label>
+          <div className="gt-field">
+            <label>Descrição</label>
             <textarea
-              value={description} onChange={(e) => setDescription(e.target.value)} rows="3"
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box', resize: 'vertical' }}
-              placeholder="Detalhes da tarefa..."
+              className="gt-input"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Descreva os detalhes da tarefa..."
+              rows="3"
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '200px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Responsável</label>
+          <div className="gt-form-grid">
+
+            <div className="gt-field">
+              <label>Responsável</label>
               <select
-                value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                className="gt-input"
+                value={assignedTo}
+                onChange={e => setAssignedTo(e.target.value)}
               >
                 <option value="">Selecione o colaborador</option>
-                {funcionarios.map((f) => (
-                  <option key={f.id} value={f.email}>{f.nome} ({f.email})</option>
+                {funcionarios.map(f => (
+                  <option key={f.id} value={f.email}>
+                    {f.nome}
+                  </option>
                 ))}
               </select>
             </div>
 
-            <div style={{ flex: 1, minWidth: '180px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Setor</label>
+            <div className="gt-field">
+              <label>Setor</label>
               <select
-                value={setorId} onChange={(e) => setSetorId(e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                className="gt-input"
+                value={setorId}
+                onChange={e => setSetorId(e.target.value)}
               >
                 <option value="">Selecione o setor</option>
-                {setores.map((s) => (
-                  <option key={s.id} value={s.id}>{s.nome}</option>
+                {setores.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome}
+                  </option>
                 ))}
               </select>
             </div>
-          </div>
 
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '150px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Prioridade</label>
+            <div className="gt-field">
+              <label>Prioridade</label>
               <select
-                value={priority} onChange={(e) => setPriority(e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                className="gt-input"
+                value={priority}
+                onChange={e => setPriority(e.target.value)}
               >
                 <option value="baixa">Baixa</option>
                 <option value="media">Média</option>
@@ -226,151 +303,153 @@ export default function TaskList({ user }) {
               </select>
             </div>
 
-            <div style={{ flex: 1, minWidth: '150px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>Prazo</label>
+            <div className="gt-field">
+              <label>Prazo</label>
               <input
-                type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+                className="gt-input"
+                type="date"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
               />
             </div>
+
           </div>
 
-          <button type="submit" style={{
-            background: '#2e7d32', color: 'white', border: 'none',
-            padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
-          }}>
-            Criar Tarefa
+          <button className="gt-primary-btn" disabled={saving}>
+            {saving ? 'Criando...' : 'Criar tarefa'}
           </button>
         </form>
       )}
 
       {loading ? (
-        <p style={{ color: '#666' }}>Carregando tarefas...</p>
+        <div className="gt-loading">
+          <div className="app-loading-spinner" />
+          <p>Carregando tarefas...</p>
+        </div>
       ) : tasks.length === 0 ? (
-        <div style={{
-          background: 'white', padding: '40px', borderRadius: '12px',
-          textAlign: 'center', color: '#666', boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
-        }}>
-          {isOwner ? 'Nenhuma tarefa encontrada.' : 'Nenhuma tarefa atribuída a você.'}
+        <div className="gt-empty-state">
+          <div className="gt-empty-icon">✓</div>
+          <h3>Nenhuma tarefa encontrada</h3>
+          <p>
+            {isOwner
+              ? 'Crie uma nova tarefa para começar.'
+              : 'Quando uma tarefa for atribuída a você, ela aparecerá aqui.'}
+          </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {tasks.map((task) => (
-            <div key={task.id} style={{
-              background: 'white',
-              padding: '20px 22px',
-              borderRadius: '12px',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-              borderLeft: `6px solid ${getStatusColor(task.status)}`
-            }}>
-              <div style={{
-                display: 'flex', justifyContent: 'space-between',
-                alignItems: 'flex-start', gap: '12px', marginBottom: '10px'
-              }}>
-                <h3 style={{ margin: 0, color: '#222', fontSize: '17px', fontWeight: '600', lineHeight: '1.3' }}>
-                  {task.title}
-                </h3>
-                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                  {getNomeSetor(task.setor_id) && (
-                    <span style={{
-                      background: '#e8f5e9', color: '#2e7d32',
-                      padding: '4px 10px', borderRadius: '20px',
-                      fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap'
-                    }}>
-                      {getNomeSetor(task.setor_id)}
-                    </span>
+        <div className="task-list">
+          {tasks.map((task, index) => (
+            <article
+              className={`gt-panel task-card status-${task.status}`}
+              key={task.id}
+              style={{ animationDelay: `${index * 45}ms` }}
+            >
+              <div className="task-card-top">
+
+                <div className="task-card-title-area">
+                  <h3>{task.title}</h3>
+
+                  {task.description && (
+                    <p>{task.description}</p>
                   )}
-                  <span style={{
-                    background: getPriorityColor(task.priority), color: 'white',
-                    padding: '4px 10px', borderRadius: '20px',
-                    fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap'
-                  }}>
-                    {task.priority}
-                  </span>
                 </div>
+
+                <span className={`priority-badge priority-${task.priority}`}>
+                  {priorityLabel[task.priority] || task.priority}
+                </span>
               </div>
 
-              {task.description && (
-                <p style={{ color: '#555', margin: '0 0 12px 0', fontSize: '14px', lineHeight: '1.5', textAlign: 'left' }}>
-                  {task.description}
-                </p>
-              )}
+              <div className="task-metadata">
+                {getNomeSetor(task.setor_id) && (
+                  <span className="task-meta-chip">
+                    ▣ {getNomeSetor(task.setor_id)}
+                  </span>
+                )}
 
-              <div style={{
-                display: 'flex', flexWrap: 'wrap', gap: '16px',
-                marginBottom: '14px', fontSize: '13px', color: '#666'
-              }}>
                 {task.assigned_to && (
-                  <span>
-                    <strong style={{ color: '#444' }}>Responsável:</strong> {task.assigned_to}
+                  <span className="task-meta-chip">
+                    ♙ {task.assigned_to}
                   </span>
                 )}
+
                 {task.due_date && (
-                  <span>
-                    <strong style={{ color: '#444' }}>Prazo:</strong>{' '}
-                    {new Date(task.due_date).toLocaleDateString('pt-BR')}
+                  <span className="task-meta-chip">
+                    ◷ {new Date(
+                      `${task.due_date}T12:00:00`
+                    ).toLocaleDateString('pt-BR')}
                   </span>
                 )}
               </div>
 
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: '12px', paddingTop: '12px', borderTop: '1px solid #f0f0f0'
-              }}>
-                <select
-  value={task.status}
-  onChange={(e) => changeStatus(task.id, e.target.value)}
-  style={{
-    padding: '7px 12px',
-    borderRadius: '6px',
-    border: '1px solid #ddd',
-    fontSize: '13px',
-    backgroundColor: '#ffffff',
-    color: '#222222',
-    WebkitTextFillColor: '#222222',
-    opacity: 1,
-    cursor: 'pointer',
-    colorScheme: 'light'
-  }}
->
-  <option
-    value="pendente"
-    style={{ color: '#222222', backgroundColor: '#ffffff' }}
-  >
-    Pendente
-  </option>
+              <div className="task-card-footer">
+                <div className="task-status-control">
+                  <span className={`status-dot ${task.status}`} />
 
-  <option
-    value="em_andamento"
-    style={{ color: '#222222', backgroundColor: '#ffffff' }}
-  >
-    Em andamento
-  </option>
-
-  <option
-    value="concluida"
-    style={{ color: '#222222', backgroundColor: '#ffffff' }}
-  >
-    Concluída
-  </option>
-</select>
+                  <select
+                    className="gt-input task-status-select"
+                    value={task.status}
+                    onChange={e => changeStatus(task.id, e.target.value)}
+                  >
+                    {Object.entries(statusLabel).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 {isOwner && (
                   <button
-                    onClick={() => deleteTask(task.id)}
-                    style={{
-                      background: '#ffebee', color: '#c62828', border: 'none',
-                      padding: '7px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px'
-                    }}
+                    className="gt-danger-btn"
+                    onClick={() => setConfirmDelete(task)}
                   >
                     Excluir
                   </button>
                 )}
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
+
+      {confirmDelete && (
+        <div
+          className="modal-overlay"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="logout-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="logout-modal-icon">!</div>
+            <h2>Excluir tarefa?</h2>
+            <p>
+              Tem certeza de que deseja excluir
+              <strong> "{confirmDelete.title}"</strong>?
+              Essa ação não poderá ser desfeita.
+            </p>
+
+            <div className="logout-modal-actions">
+              <button
+                className="logout-cancel-btn"
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancelar
+              </button>
+
+              <button
+                className="logout-confirm-btn"
+                onClick={deleteTask}
+              >
+                Sim, excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
